@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ContratosNet — Gestão de Contratos de Energia</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --bg2: #161b27;
+    --bg3: #1e2535;
+    --bg4: #252d3e;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #e8eaf2;
+    --text2: #8892a4;
+    --text3: #545e72;
+    --accent: #4f8ef7;
+    --accent2: #3a6fd4;
+    --green: #1fc98e;
+    --pink: #e05a8a;
+    --amber: #f0a028;
+    --red: #e55252;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --shadow: 0 2px 16px rgba(0,0,0,0.4);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Inter', -apple-system, sans-serif; font-size: 14px; }
+  
+  /* ── Layout ── */
+  .app { display: grid; grid-template-columns: 220px 1fr; grid-template-rows: 52px 1fr; height: 100vh; }
+  .topbar { grid-column: 1/-1; background: var(--bg2); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 20px; gap: 16px; z-index: 10; }
+  .sidebar { background: var(--bg2); border-right: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; }
+  .main { overflow-y: auto; padding: 20px; }
+
+  /* ── Topbar ── */
+  .logo { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; }
+  .logo span { color: var(--accent); }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border2); background: var(--bg3); color: var(--text); font-size: 13px; cursor: pointer; transition: background .15s; white-space: nowrap; }
+  .btn:hover { background: var(--bg4); }
+  .btn-primary { background: var(--accent); border-color: var(--accent2); color: #fff; }
+  .btn-primary:hover { background: var(--accent2); }
+  #file-input { display: none; }
+  .badge-pill { font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
+  .pill-cp { background: rgba(31,201,142,.15); color: var(--green); }
+  .pill-lp { background: rgba(79,142,247,.15); color: var(--accent); }
+  .pill-other { background: rgba(255,255,255,.06); color: var(--text2); }
+  .pill-livre { background: rgba(240,160,40,.12); color: var(--amber); }
+  .pill-reg { background: rgba(224,90,138,.12); color: var(--pink); }
+
+  /* ── Sidebar ── */
+  .sidebar-section { padding: 14px 14px 8px; }
+  .sidebar-label { font-size: 10px; font-weight: 700; letter-spacing: .08em; color: var(--text3); text-transform: uppercase; margin-bottom: 8px; }
+  .nav-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: var(--radius-sm); color: var(--text2); cursor: pointer; font-size: 13px; transition: all .15s; }
+  .nav-item:hover, .nav-item.active { background: var(--bg3); color: var(--text); }
+  .nav-item.active { border-left: 2px solid var(--accent); padding-left: 8px; }
+  .nav-icon { font-size: 15px; opacity: .7; }
+  .sidebar-filters { padding: 0 14px 14px; flex: 1; }
+  .filter-group { margin-bottom: 12px; }
+  .filter-label { font-size: 11px; color: var(--text3); margin-bottom: 4px; display: block; }
+  select, input[type=text] { width: 100%; background: var(--bg3); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius-sm); padding: 6px 8px; font-size: 12px; outline: none; }
+  select:focus, input[type=text]:focus { border-color: var(--accent); }
+  option { background: var(--bg3); }
+  .clear-btn { width: 100%; margin-top: 4px; padding: 6px; font-size: 12px; color: var(--text3); background: transparent; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; }
+  .clear-btn:hover { color: var(--text); border-color: var(--border2); }
+
+  /* ── Views ── */
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* ── KPI cards ── */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 12px; margin-bottom: 20px; }
+  .kpi-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .kpi-label { font-size: 11px; color: var(--text3); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .05em; }
+  .kpi-val { font-size: 26px; font-weight: 700; color: var(--text); line-height: 1; }
+  .kpi-sub { font-size: 11px; color: var(--text3); margin-top: 4px; }
+  .kpi-card.accent { border-color: rgba(79,142,247,.3); }
+  .kpi-card.green { border-color: rgba(31,201,142,.3); }
+  .kpi-card.pink { border-color: rgba(224,90,138,.3); }
+  .kpi-card.amber { border-color: rgba(240,160,40,.3); }
+
+  /* ── Panels ── */
+  .panels-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+  .panels-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+  .panel { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .panel-title { font-size: 12px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; }
+  .panel-title span { color: var(--text3); font-weight: 400; }
+
+  /* ── Network canvas ── */
+  #netCanvas { width: 100%; display: block; border-radius: var(--radius-sm); cursor: pointer; }
+  .net-legend { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
+  .leg { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text2); }
+  .leg-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* ── Players list ── */
+  .player-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 10px; border-radius: var(--radius-sm); cursor: pointer; border: 1px solid transparent; transition: all .12s; }
+  .player-row:hover { background: var(--bg3); }
+  .player-row.active { background: rgba(79,142,247,.1); border-color: rgba(79,142,247,.3); }
+  .player-info { display: flex; flex-direction: column; gap: 2px; }
+  .player-name { font-size: 13px; font-weight: 500; color: var(--text); }
+  .player-meta { font-size: 11px; color: var(--text3); }
+  .player-count { font-size: 13px; font-weight: 600; color: var(--accent); }
+
+  /* ── Table ── */
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { padding: 8px 12px; text-align: left; color: var(--text3); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text); }
+  tr:hover td { background: var(--bg3); }
+  .tbl-empty { text-align: center; padding: 40px; color: var(--text3); }
+
+  /* ── Upload screen ── */
+  .upload-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; text-align: center; gap: 16px; }
+  .upload-box { border: 2px dashed var(--border2); border-radius: var(--radius); padding: 48px 40px; max-width: 420px; width: 100%; cursor: pointer; transition: border-color .2s; }
+  .upload-box:hover { border-color: var(--accent); }
+  .upload-icon { font-size: 40px; margin-bottom: 12px; }
+  .upload-title { font-size: 17px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  .upload-sub { font-size: 13px; color: var(--text2); line-height: 1.6; }
+  .upload-hint { font-size: 11px; color: var(--text3); margin-top: 12px; }
+  .col-list { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 8px; }
+  .col-tag { background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; font-size: 11px; color: var(--text2); font-family: monospace; }
+
+  /* ── Chart wrapper ── */
+  .chart-wrap { position: relative; }
+
+  /* ── Timeline ── */
+  .timeline-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .tl-label { font-size: 12px; color: var(--text2); width: 80px; text-align: right; flex-shrink: 0; }
+  .tl-track { flex: 1; background: var(--bg3); border-radius: 4px; height: 20px; position: relative; overflow: hidden; }
+  .tl-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 6px; font-size: 11px; font-weight: 600; color: rgba(255,255,255,.8); }
+  .tl-count { font-size: 11px; color: var(--text3); width: 28px; text-align: right; flex-shrink: 0; }
+
+  /* ── Relation detail ── */
+  .rel-item { margin-bottom: 8px; }
+  .rel-card { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; display: flex; align-items: center; gap: 12px; cursor: pointer; transition: background .15s; }
+  .rel-card:hover { background: var(--bg4); }
+  .rel-item.open .rel-card { border-radius: var(--radius-sm) var(--radius-sm) 0 0; border-bottom-color: transparent; }
+  .rel-arrow { color: var(--text3); font-size: 16px; }
+  .rel-names { flex: 1; }
+  .rel-from { font-size: 13px; font-weight: 600; color: var(--green); }
+  .rel-to { font-size: 13px; font-weight: 600; color: var(--accent); }
+  .rel-count { font-size: 12px; color: var(--text3); margin-top: 2px; }
+  .rel-badge { margin-left: auto; }
+  .rel-toggle { background: none; border: none; color: var(--text3); font-size: 12px; cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm); transition: transform .25s, color .15s; line-height: 1; flex-shrink: 0; }
+  .rel-toggle:hover { color: var(--text); }
+  .rel-item.open .rel-toggle { transform: rotate(180deg); color: var(--accent); }
+  .rel-detail { max-height: 0; overflow: hidden; transition: max-height .3s ease; background: var(--bg); border: 1px solid var(--border); border-top: none; border-radius: 0 0 var(--radius-sm) var(--radius-sm); }
+  .rel-item.open .rel-detail { max-height: 800px; }
+  .rel-detail table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .rel-detail th { padding: 7px 12px; color: var(--text3); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .rel-detail td { padding: 7px 12px; border-bottom: 1px solid var(--border); color: var(--text2); }
+  .rel-detail tr:last-child td { border-bottom: none; }
+  .rel-detail tr:hover td { background: var(--bg3); }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 4px; }
+
+  /* ── Type quick-filter chips ── */
+  .tipo-chips { display: flex; gap: 6px; align-items: center; }
+  .tipo-chip { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid var(--border2); background: var(--bg3); color: var(--text2); cursor: pointer; transition: all .15s; white-space: nowrap; }
+  .tipo-chip:hover { background: var(--bg4); color: var(--text); }
+  .tipo-chip.active { background: var(--accent); border-color: var(--accent2); color: #fff; }
+  .tipo-chip.active-cp { background: rgba(31,201,142,.15); border-color: rgba(31,201,142,.4); color: var(--green); }
+  .tipo-chip.active-lp { background: rgba(79,142,247,.15); border-color: rgba(79,142,247,.4); color: var(--accent); }
+
+  /* ── Toast ── */
+  .toast { position: fixed; bottom: 20px; right: 20px; background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); padding: 12px 18px; font-size: 13px; color: var(--text); z-index: 999; box-shadow: var(--shadow); transform: translateY(80px); opacity: 0; transition: all .3s; }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  @media (max-width: 800px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: 52px auto 1fr; }
+    .sidebar { grid-row: 2; display: none; }
+    .panels-2, .panels-3 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="logo">Contratos<span>Net</span></div>
+    <div id="data-status" style="font-size:12px;color:var(--text3)">Nenhum dado carregado</div>
+    <div class="tipo-chips">
+      <button class="tipo-chip active" id="chip-todos" onclick="setTipoChip('')">Todos</button>
+      <button class="tipo-chip" id="chip-cp" onclick="setTipoChip('Curto Prazo')">Curto Prazo</button>
+      <button class="tipo-chip" id="chip-lp" onclick="setTipoChip('Longo Prazo')">Longo Prazo</button>
+    </div>
+    <div class="topbar-right">
+      <span id="filter-badge" style="display:none;font-size:12px;color:var(--amber)">● Filtros ativos</span>
+      <label class="btn" for="file-input">📂 Carregar arquivo</label>
+      <input type="file" id="file-input" accept=".csv,.txt,.xlsx,.xls,.xlsm">
+      <button class="btn" id="btn-export" style="display:none">⬇ Exportar</button>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Navegação</div>
+      <div class="nav-item active" data-view="dashboard">
+        <span class="nav-icon">📊</span> Dashboard
+      </div>
+      <div class="nav-item" data-view="rede">
+        <span class="nav-icon">🕸</span> Rede de Players
+      </div>
+      <div class="nav-item" data-view="contratos">
+        <span class="nav-icon">📋</span> Contratos
+      </div>
+      <div class="nav-item" data-view="relacoes">
+        <span class="nav-icon">🔗</span> Relações
+      </div>
+      <div class="nav-item" data-view="players">
+        <span class="nav-icon">👤</span> Players
+      </div>
+    </div>
+    <div class="sidebar-filters">
+      <div class="sidebar-label">Filtros</div>
+      <div class="filter-group">
+        <label class="filter-label">Player (vendedor ou comprador)</label>
+        <select id="f-player"><option value="">Todos</option></select>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Tipo de contrato</label>
+        <select id="f-tipo"><option value="">Todos</option></select>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Mercado</label>
+        <select id="f-mercado"><option value="">Todos</option></select>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Ano</label>
+        <select id="f-ano"><option value="">Todos</option></select>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Tipo de comprador</label>
+        <select id="f-tcomp"><option value="">Todos</option></select>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Buscar</label>
+        <input type="text" id="f-busca" placeholder="SEI, processo...">
+      </div>
+      <button class="clear-btn" id="btn-clear">✕ Limpar filtros</button>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div class="main" id="main">
+
+    <!-- Upload screen -->
+    <div id="view-upload" class="view active">
+      <div class="upload-screen">
+        <div class="upload-box" onclick="document.getElementById('file-input').click()">
+          <div class="upload-icon">⚡</div>
+          <div class="upload-title">Carregue sua base de contratos</div>
+          <div class="upload-sub">Arraste um arquivo <strong>Excel (.xlsx, .xls)</strong> ou <strong>CSV</strong> e clique para selecionar. O sistema reconhece automaticamente as colunas.</div>
+          <div class="upload-hint">Colunas esperadas:</div>
+          <div class="col-list">
+            <span class="col-tag">Registro</span>
+            <span class="col-tag">Agente Vendedor</span>
+            <span class="col-tag">Agente Comprador</span>
+            <span class="col-tag">Tipo de contrato</span>
+            <span class="col-tag">Mercado</span>
+            <span class="col-tag">ano</span>
+            <span class="col-tag">Vigência Atual</span>
+            <span class="col-tag">Número SEI</span>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--text3)">ou use os dados de demonstração →</div>
+        <button class="btn btn-primary" id="btn-demo">Carregar dados demo</button>
+      </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="view-dashboard" class="view">
+      <div class="kpis" id="kpis-area"></div>
+      <div class="panels-2">
+        <div class="panel">
+          <div class="panel-title">Contratos por tipo <span id="tipo-total"></span></div>
+          <div class="chart-wrap" style="height:220px"><canvas id="chart-tipo" role="img" aria-label="Contratos por tipo"></canvas></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Contratos por ano <span id="ano-total"></span></div>
+          <div class="chart-wrap" style="height:220px"><canvas id="chart-ano" role="img" aria-label="Contratos por ano"></canvas></div>
+        </div>
+      </div>
+      <div class="panels-2">
+        <div class="panel">
+          <div class="panel-title">Top vendedores</div>
+          <div id="top-vend"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Top compradores</div>
+          <div id="top-comp"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rede -->
+    <div id="view-rede" class="view">
+      <div class="panel" style="margin-bottom:14px">
+        <div class="panel-title">Rede de relações entre players <span id="net-info"></span></div>
+        <canvas id="netCanvas" height="480"></canvas>
+        <div class="net-legend">
+          <div class="leg"><div class="leg-dot" style="background:var(--green)"></div>Vendedor</div>
+          <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div>Comprador</div>
+          <div class="leg"><div class="leg-dot" style="background:var(--pink)"></div>Ambos os papéis</div>
+          <div class="leg" style="margin-left:auto;font-size:11px;color:var(--text3)">Clique num nó para filtrar</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Contratos -->
+    <div id="view-contratos" class="view">
+      <div class="panel">
+        <div class="panel-title">Contratos <span id="tbl-count"></span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Registro</th>
+                <th>Vendedor</th>
+                <th>Comprador</th>
+                <th>Tipo</th>
+                <th>Mercado</th>
+                <th>Ano</th>
+                <th>Vigência Atual</th>
+                <th>Nº SEI</th>
+              </tr>
+            </thead>
+            <tbody id="tbl-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Relações -->
+    <div id="view-relacoes" class="view">
+      <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:14px">
+        <div class="kpi-card accent">
+          <div class="kpi-label">Pares únicos</div>
+          <div class="kpi-val" id="r-pairs">—</div>
+        </div>
+        <div class="kpi-card green">
+          <div class="kpi-label">Relação mais forte</div>
+          <div class="kpi-val" id="r-top" style="font-size:14px;font-weight:600">—</div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Todas as relações <span id="rel-count"></span></div>
+        <div id="rel-list"></div>
+      </div>
+    </div>
+
+    <!-- Players -->
+    <div id="view-players" class="view">
+
+      <!-- Market Share -->
+      <div class="panel" style="margin-bottom:14px;">
+        <div class="panel-title">
+          Market Share — Curto Prazo
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <select id="ms-ano" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);padding:4px 8px;font-size:12px;outline:none;">
+              <option value="">Todos os anos</option>
+            </select>
+            <div style="display:flex;gap:4px;">
+              <button class="btn" id="ms-btn-vend" onclick="setMsRole('vendedor')" style="font-size:12px;padding:4px 10px;">Vendedor</button>
+              <button class="btn" id="ms-btn-comp" onclick="setMsRole('comprador')" style="font-size:12px;padding:4px 10px;">Comprador</button>
+              <button class="btn btn-primary" id="ms-btn-todos" onclick="setMsRole('todos')" style="font-size:12px;padding:4px 10px;">Ambos</button>
+            </div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:280px 1fr;gap:24px;align-items:center;">
+          <div class="chart-wrap" style="height:280px;"><canvas id="ms-chart"></canvas></div>
+          <div id="ms-legend"></div>
+        </div>
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin-bottom:20px;">
+
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+        <select id="p-player-sel" style="flex:1;min-width:200px;font-size:14px;padding:9px 12px;background:var(--bg2);border:1px solid var(--border2);color:var(--text);border-radius:var(--radius-sm);outline:none;">
+          <option value="">— Selecione um player —</option>
+        </select>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button class="btn btn-primary" id="p-btn-anual" onclick="setPlayerMode('anual')">📅 Anual</button>
+          <button class="btn" id="p-btn-mensal" onclick="setPlayerMode('mensal')">🗓 Mensal</button>
+        </div>
+      </div>
+      <div id="p-empty" style="text-align:center;padding:80px 20px;color:var(--text3);font-size:14px;">Selecione um player para ver o acompanhamento histórico</div>
+      <div id="p-content" style="display:none;">
+        <div class="kpis" id="p-kpis" style="margin-bottom:20px;"></div>
+        <div class="panels-2" style="margin-bottom:14px;">
+          <div class="panel">
+            <div class="panel-title">Evolução de contratos <span id="p-chart-label" style="color:var(--text3);font-weight:400"></span></div>
+            <div class="chart-wrap" style="height:240px;"><canvas id="p-chart"></canvas></div>
+            <div style="display:flex;gap:16px;margin-top:10px;">
+              <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#1fc98e"></span>Como vendedor</div>
+              <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#4f8ef7"></span>Como comprador</div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-title">Distribuição anual <span id="p-donut-label" style="color:var(--text3);font-weight:400"></span></div>
+            <div style="display:grid;grid-template-columns:160px 1fr;gap:12px;align-items:center;">
+              <div class="chart-wrap" style="height:200px;"><canvas id="p-donut-chart"></canvas></div>
+              <div id="p-donut-legend" style="font-size:12px;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="panels-2" style="margin-bottom:14px;">
+          <div class="panel">
+            <div class="panel-title">Principais compradores deste player</div>
+            <div id="p-list-vend"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-title">Principais vendedores deste player</div>
+            <div id="p-list-comp"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Todos os contratos <span id="p-tbl-count"></span></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Registro</th>
+                  <th>Papel</th>
+                  <th>Contraparte</th>
+                  <th>Tipo</th>
+                  <th>Mercado</th>
+                  <th>Ano</th>
+                  <th>Assinatura</th>
+                  <th>Vigência Atual</th>
+                  <th>Nº SEI</th>
+                </tr>
+              </thead>
+              <tbody id="p-tbl-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────
+let allData = [];
+let filteredData = [];
+let charts = {};
+let netAnim;
+let netNodes = [], netEdges = [];
+
+const DEMO_DATA = [
+  {registro:'001',sei:'0001/2020',vendedor:'MTX',comprador:'AES',tipo:'Curto Prazo',mercado:'Livre',ano:'2020',vigencia:'2021-06-30',tcomp:'Gerador'},
+  {registro:'002',sei:'0002/2020',vendedor:'MTX',comprador:'CPFL',tipo:'Longo Prazo',mercado:'Regulado',ano:'2020',vigencia:'2030-12-31',tcomp:'Distribuidora'},
+  {registro:'003',sei:'0003/2021',vendedor:'MTX',comprador:'ENGIE',tipo:'Curto Prazo',mercado:'Livre',ano:'2021',vigencia:'2022-03-31',tcomp:'Comercializadora'},
+  {registro:'004',sei:'0004/2021',vendedor:'MTX',comprador:'CEMIG',tipo:'Curto Prazo',mercado:'Livre',ano:'2021',vigencia:'2022-06-30',tcomp:'Distribuidora'},
+  {registro:'005',sei:'0005/2022',vendedor:'ENGIE',comprador:'MTX',tipo:'Curto Prazo',mercado:'Livre',ano:'2022',vigencia:'2023-12-31',tcomp:'Comercializadora'},
+  {registro:'006',sei:'0006/2022',vendedor:'ENGIE',comprador:'AES',tipo:'Longo Prazo',mercado:'Regulado',ano:'2022',vigencia:'2032-12-31',tcomp:'Gerador'},
+  {registro:'007',sei:'0007/2022',vendedor:'ENGIE',comprador:'NEOENERGIA',tipo:'Curto Prazo',mercado:'Livre',ano:'2022',vigencia:'2023-06-30',tcomp:'Distribuidora'},
+  {registro:'008',sei:'0008/2022',vendedor:'AES',comprador:'CEMIG',tipo:'Curto Prazo',mercado:'Livre',ano:'2022',vigencia:'2023-09-30',tcomp:'Distribuidora'},
+  {registro:'009',sei:'0009/2022',vendedor:'AES',comprador:'NEOENERGIA',tipo:'Longo Prazo',mercado:'Regulado',ano:'2022',vigencia:'2032-06-30',tcomp:'Distribuidora'},
+  {registro:'010',sei:'0010/2023',vendedor:'CPFL',comprador:'MTX',tipo:'Curto Prazo',mercado:'Livre',ano:'2023',vigencia:'2024-09-30',tcomp:'Comercializadora'},
+  {registro:'011',sei:'0011/2023',vendedor:'CEMIG',comprador:'ENGIE',tipo:'Curto Prazo',mercado:'Livre',ano:'2023',vigencia:'2024-03-31',tcomp:'Comercializadora'},
+  {registro:'012',sei:'0012/2023',vendedor:'NEOENERGIA',comprador:'CPFL',tipo:'Longo Prazo',mercado:'Regulado',ano:'2023',vigencia:'2033-06-30',tcomp:'Distribuidora'},
+  {registro:'013',sei:'0013/2023',vendedor:'MTX',comprador:'AES',tipo:'Curto Prazo',mercado:'Livre',ano:'2023',vigencia:'2024-12-31',tcomp:'Gerador'},
+  {registro:'014',sei:'0014/2023',vendedor:'CPFL',comprador:'CEMIG',tipo:'Curto Prazo',mercado:'Livre',ano:'2023',vigencia:'2024-06-30',tcomp:'Distribuidora'},
+  {registro:'015',sei:'0015/2024',vendedor:'AES',comprador:'MTX',tipo:'Longo Prazo',mercado:'Livre',ano:'2024',vigencia:'2034-12-31',tcomp:'Comercializadora'},
+  {registro:'016',sei:'0016/2024',vendedor:'ENGIE',comprador:'CPFL',tipo:'Curto Prazo',mercado:'Livre',ano:'2024',vigencia:'2025-03-31',tcomp:'Distribuidora'},
+  {registro:'017',sei:'0017/2024',vendedor:'NEOENERGIA',comprador:'MTX',tipo:'Curto Prazo',mercado:'Livre',ano:'2024',vigencia:'2025-06-30',tcomp:'Comercializadora'},
+  {registro:'018',sei:'0018/2024',vendedor:'MTX',comprador:'NEOENERGIA',tipo:'Longo Prazo',mercado:'Regulado',ano:'2024',vigencia:'2034-12-31',tcomp:'Distribuidora'},
+];
+
+// ── Field mapping ──────────────────────────────────────
+function getF(row, candidates) {
+  for (const k of candidates) {
+    const v = row[k];
+    if (v !== undefined) return (v || '').toString().trim();
+  }
+  return '';
+}
+
+function parseRows(rows) {
+  return rows.map(r => ({
+    registro: getF(r, ['Registro','registro','REGISTRO']),
+    sei: getF(r, ['Número SEI','Numero SEI','numero_sei','SEI','sei','Processo_SEI','processo_sei']),
+    vendedor: getF(r, ['Agente Vendedor','agente_vendedor','VENDEDOR','vendedor']),
+    comprador: getF(r, ['Agente Comprador','agente_comprador','COMPRADOR','comprador']),
+    tipo: getF(r, ['Tipo de contrato','tipo_de_contrato','TIPO','tipo']),
+    mercado: getF(r, ['Mercado','mercado','MERCADO']),
+    ano: getF(r, ['ano','Ano','ANO','Ano de contrato','ano_contrato']),
+    vigencia: getF(r, ['Vigência Atual','Vigencia Atual','vigencia_atual','VIGENCIA_ATUAL','Vigência Original']),
+    assinatura: getF(r, ['Data de Assinatura','Data Assinatura','data_assinatura','DATA_ASSINATURA','Assinatura','assinatura']),
+    tcomp: getF(r, ['Tipo de comprador','tipo_de_comprador','TIPO_COMPRADOR','tcomp']),
+  })).filter(r => r.vendedor || r.comprador);
+}
+
+// ── Load data ──────────────────────────────────────────
+function loadData(rows, filename) {
+  allData = rows;
+  filteredData = [...rows];
+  populateFilters();
+  renderAll();
+  showView('dashboard');
+  document.getElementById('data-status').textContent = `${rows.length} contratos — ${filename || ''}`;
+  document.getElementById('btn-export').style.display = '';
+  showToast(`✅ ${rows.length} contratos carregados com sucesso`);
+}
+
+document.getElementById('file-input').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  const ext = f.name.split('.').pop().toLowerCase();
+
+  if (ext === 'csv' || ext === 'txt') {
+    Papa.parse(f, {
+      header: true, skipEmptyLines: true, encoding: 'UTF-8',
+      complete: res => {
+        const parsed = parseRows(res.data);
+        if (parsed.length) loadData(parsed, f.name);
+        else showToast('⚠️ Não foi possível identificar as colunas. Verifique o CSV.', true);
+      }
+    });
+  } else if (['xlsx','xls','xlsm'].includes(ext)) {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: 'array' });
+        // Try to find best sheet — prefer one with "contrato" in name, else first sheet
+        let sheetName = wb.SheetNames[0];
+        const candidate = wb.SheetNames.find(n => /contrato|dados|base/i.test(n));
+        if (candidate) sheetName = candidate;
+        const ws = wb.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        const parsed = parseRows(rows);
+        if (parsed.length) {
+          loadData(parsed, `${f.name} (aba: ${sheetName})`);
+        } else {
+          // Try other sheets
+          let found = false;
+          for (const name of wb.SheetNames) {
+            const r2 = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: '' });
+            const p2 = parseRows(r2);
+            if (p2.length) { loadData(p2, `${f.name} (aba: ${name})`); found = true; break; }
+          }
+          if (!found) showToast('⚠️ Nenhuma aba com dados reconhecidos. Verifique os cabeçalhos.', true);
+        }
+      } catch(err) {
+        showToast('⚠️ Erro ao ler o arquivo Excel: ' + err.message, true);
+      }
+    };
+    reader.readAsArrayBuffer(f);
+  } else {
+    showToast('⚠️ Formato não suportado. Use .xlsx, .xls ou .csv', true);
+  }
+  e.target.value = '';
+});
+
+document.getElementById('btn-demo').addEventListener('click', () => loadData(DEMO_DATA));
+
+// ── Filters ──────────────────────────────────────────
+function populateFilters() {
+  const allPlayers = [...new Set([...allData.map(r=>r.vendedor), ...allData.map(r=>r.comprador)])].filter(Boolean).sort();
+  fillSelect('f-player', allPlayers, 'Todos os players');
+  fillSelect('f-tipo', [...new Set(allData.map(r=>r.tipo))].filter(Boolean).sort(), 'Todos os tipos');
+  fillSelect('f-mercado', [...new Set(allData.map(r=>r.mercado))].filter(Boolean).sort(), 'Todos os mercados');
+  fillSelect('f-ano', [...new Set(allData.map(r=>r.ano))].filter(Boolean).sort(), 'Todos os anos');
+  fillSelect('f-tcomp', [...new Set(allData.map(r=>r.tcomp))].filter(Boolean).sort(), 'Todos');
+  fillSelect('p-player-sel', allPlayers, '— Selecione um player —');
+  fillSelect('ms-ano', [...new Set(allData.map(r=>r.ano))].filter(Boolean).sort(), 'Todos os anos');
+  renderMarketShare();
+}
+
+function fillSelect(id, vals, placeholder) {
+  const sel = document.getElementById(id);
+  const cur = sel.value;
+  sel.innerHTML = `<option value="">${placeholder}</option>`;
+  vals.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); });
+  if (cur) sel.value = cur;
+}
+
+function applyFilters() {
+  const fp = document.getElementById('f-player').value;
+  const ft = document.getElementById('f-tipo').value;
+  const fm = document.getElementById('f-mercado').value;
+  const fa = document.getElementById('f-ano').value;
+  const ftc = document.getElementById('f-tcomp').value;
+  const fb = document.getElementById('f-busca').value.toLowerCase();
+  filteredData = allData.filter(r => {
+    if (fp && r.vendedor !== fp && r.comprador !== fp) return false;
+    if (ft && r.tipo !== ft) return false;
+    if (fm && r.mercado !== fm) return false;
+    if (fa && r.ano !== fa) return false;
+    if (ftc && r.tcomp !== ftc) return false;
+    if (fb && !JSON.stringify(r).toLowerCase().includes(fb)) return false;
+    return true;
+  });
+  const hasFilter = fp || ft || fm || fa || ftc || fb;
+  document.getElementById('filter-badge').style.display = hasFilter ? '' : 'none';
+  renderAll();
+}
+
+['f-player','f-tipo','f-mercado','f-ano','f-tcomp'].forEach(id => {
+  document.getElementById(id).addEventListener('change', applyFilters);
+});
+document.getElementById('f-busca').addEventListener('input', applyFilters);
+document.getElementById('btn-clear').addEventListener('click', () => {
+  ['f-player','f-tipo','f-mercado','f-ano','f-tcomp'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('f-busca').value = '';
+  updateTipoChips('');
+  applyFilters();
+});
+
+window.setTipoChip = function(val) {
+  document.getElementById('f-tipo').value = val;
+  updateTipoChips(val);
+  applyFilters();
+};
+
+function updateTipoChips(val) {
+  document.getElementById('chip-todos').className = 'tipo-chip' + (val === '' ? ' active' : '');
+  document.getElementById('chip-cp').className = 'tipo-chip' + (val === 'Curto Prazo' ? ' active-cp' : '');
+  document.getElementById('chip-lp').className = 'tipo-chip' + (val === 'Longo Prazo' ? ' active-lp' : '');
+}
+
+document.getElementById('f-tipo').addEventListener('change', function() {
+  updateTipoChips(this.value);
+});
+
+// ── Navigation ──────────────────────────────────────
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => {
+    n.classList.toggle('active', n.dataset.view === name);
+  });
+  if (name === 'rede') setTimeout(renderNet, 50);
+}
+
+document.querySelectorAll('.nav-item').forEach(n => {
+  n.addEventListener('click', () => {
+    if (!allData.length) { showToast('⚠️ Carregue um arquivo CSV primeiro.', true); return; }
+    showView(n.dataset.view);
+  });
+});
+
+// ── Render all ──────────────────────────────────────
+function renderAll() {
+  renderKPIs();
+  renderCharts();
+  renderTopLists();
+  renderTable();
+  renderRelacoes();
+  renderPlayerView();
+}
+
+// ── KPIs ────────────────────────────────────────────
+function renderKPIs() {
+  const vend = new Set(filteredData.map(r=>r.vendedor).filter(Boolean));
+  const comp = new Set(filteredData.map(r=>r.comprador).filter(Boolean));
+  const tipos = new Set(filteredData.map(r=>r.tipo).filter(Boolean));
+  const anos = new Set(filteredData.map(r=>r.ano).filter(Boolean));
+  document.getElementById('kpis-area').innerHTML = `
+    <div class="kpi-card accent"><div class="kpi-label">Total de contratos</div><div class="kpi-val">${filteredData.length}</div><div class="kpi-sub">de ${allData.length} totais</div></div>
+    <div class="kpi-card green"><div class="kpi-label">Agentes vendedores</div><div class="kpi-val">${vend.size}</div></div>
+    <div class="kpi-card pink"><div class="kpi-label">Agentes compradores</div><div class="kpi-val">${comp.size}</div></div>
+    <div class="kpi-card amber"><div class="kpi-label">Tipos de contrato</div><div class="kpi-val">${tipos.size}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Anos cobertos</div><div class="kpi-val">${anos.size}</div></div>
+  `;
+}
+
+// ── Charts ──────────────────────────────────────────
+function renderCharts() {
+  // Tipo
+  const tipoCount = {};
+  filteredData.forEach(r => { if(r.tipo) tipoCount[r.tipo] = (tipoCount[r.tipo]||0)+1; });
+  const tipoLabels = Object.keys(tipoCount).sort((a,b)=>tipoCount[b]-tipoCount[a]);
+  const tipoColors = ['#4f8ef7','#1fc98e','#e05a8a','#f0a028','#7c6cf7','#e55252'];
+  drawBarChart('chart-tipo', tipoLabels, tipoLabels.map(k=>tipoCount[k]), tipoColors);
+
+  // Ano
+  const anoCount = {};
+  filteredData.forEach(r => { if(r.ano) anoCount[r.ano] = (anoCount[r.ano]||0)+1; });
+  const anoLabels = Object.keys(anoCount).sort();
+  drawBarChart('chart-ano', anoLabels, anoLabels.map(k=>anoCount[k]), anoLabels.map((_,i)=>`hsl(${210+i*20},70%,60%)`));
+}
+
+function drawBarChart(id, labels, data, colors) {
+  if (charts[id]) charts[id].destroy();
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  charts[id] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ data, backgroundColor: Array.isArray(colors) ? colors.slice(0, data.length) : colors, borderRadius: 5, borderSkipped: false }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#545e72', font: { size: 11 } }, grid: { display: false } },
+        y: { ticks: { color: '#545e72', font: { size: 11 }, stepSize: 1 }, grid: { color: 'rgba(255,255,255,0.05)' } }
+      }
+    }
+  });
+}
+
+// ── Top lists ──────────────────────────────────────
+function renderTopLists() {
+  const vendCount = {};
+  const compCount = {};
+  filteredData.forEach(r => {
+    if(r.vendedor) vendCount[r.vendedor] = (vendCount[r.vendedor]||0)+1;
+    if(r.comprador) compCount[r.comprador] = (compCount[r.comprador]||0)+1;
+  });
+  renderTimeline('top-vend', vendCount, '#1fc98e');
+  renderTimeline('top-comp', compCount, '#4f8ef7');
+}
+
+function renderTimeline(id, counts, color) {
+  const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const max = sorted[0]?.[1] || 1;
+  document.getElementById(id).innerHTML = sorted.map(([name, cnt]) => `
+    <div class="timeline-bar">
+      <div class="tl-label" title="${name}">${name.length>10?name.slice(0,10)+'…':name}</div>
+      <div class="tl-track">
+        <div class="tl-fill" style="width:${Math.round(cnt/max*100)}%;background:${color}">${cnt}</div>
+      </div>
+      <button class="tl-count btn" style="padding:2px 8px;font-size:11px" onclick="filterByPlayer('${name}')">${cnt}</button>
+    </div>`).join('');
+}
+
+window.filterByPlayer = name => {
+  document.getElementById('f-player').value = name;
+  applyFilters();
+  showView('contratos');
+};
+
+// ── Table ──────────────────────────────────────────
+function renderTable() {
+  document.getElementById('tbl-count').textContent = `(${filteredData.length})`;
+  const body = document.getElementById('tbl-body');
+  if (!filteredData.length) { body.innerHTML = `<tr><td colspan="8" class="tbl-empty">Nenhum contrato encontrado</td></tr>`; return; }
+  body.innerHTML = filteredData.map(r => {
+    const tp = r.tipo?.toLowerCase();
+    const tcls = tp?.includes('curto') ? 'pill-cp' : tp?.includes('longo') ? 'pill-lp' : 'pill-other';
+    const mc = r.mercado?.toLowerCase();
+    const mcls = mc?.includes('livre') ? 'pill-livre' : mc?.includes('reg') ? 'pill-reg' : 'pill-other';
+    return `<tr>
+      <td>${r.registro||'—'}</td>
+      <td><strong>${r.vendedor||'—'}</strong></td>
+      <td>${r.comprador||'—'}</td>
+      <td><span class="badge-pill ${tcls}">${r.tipo||'—'}</span></td>
+      <td><span class="badge-pill ${mcls}">${r.mercado||'—'}</span></td>
+      <td>${r.ano||'—'}</td>
+      <td>${r.vigencia||'—'}</td>
+      <td style="font-family:monospace;font-size:11px;color:var(--text3)">${r.sei||'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Relações ──────────────────────────────────────
+function renderRelacoes() {
+  const pairs = {};
+  filteredData.forEach(r => {
+    if (r.vendedor && r.comprador) {
+      const k = r.vendedor + '→' + r.comprador;
+      if (!pairs[k]) pairs[k] = { from: r.vendedor, to: r.comprador, count: 0, tipos: {}, contracts: [] };
+      pairs[k].count++;
+      pairs[k].tipos[r.tipo] = (pairs[k].tipos[r.tipo]||0)+1;
+      pairs[k].contracts.push(r);
+    }
+  });
+  const sorted = Object.values(pairs).sort((a,b)=>b.count-a.count);
+  document.getElementById('r-pairs').textContent = sorted.length;
+  if (sorted[0]) {
+    document.getElementById('r-top').textContent = `${sorted[0].from} → ${sorted[0].to}`;
+  }
+  document.getElementById('rel-count').textContent = `(${sorted.length} pares)`;
+  document.getElementById('rel-list').innerHTML = sorted.map((p, i) => {
+    const tipoStr = Object.entries(p.tipos).map(([t,c])=>`${c}× ${t}`).join(', ');
+    const id = 'rd' + i;
+    const detailRows = p.contracts.map(r => {
+      const tp = r.tipo?.toLowerCase();
+      const tcls = tp?.includes('curto') ? 'pill-cp' : tp?.includes('longo') ? 'pill-lp' : 'pill-other';
+      const mc = r.mercado?.toLowerCase();
+      const mcls = mc?.includes('livre') ? 'pill-livre' : mc?.includes('reg') ? 'pill-reg' : 'pill-other';
+      return `<tr>
+        <td>${r.registro||'—'}</td>
+        <td><span class="badge-pill ${tcls}">${r.tipo||'—'}</span></td>
+        <td><span class="badge-pill ${mcls}">${r.mercado||'—'}</span></td>
+        <td>${r.ano||'—'}</td>
+        <td>${r.assinatura||'—'}</td>
+        <td>${r.vigencia||'—'}</td>
+        <td style="font-family:monospace;font-size:10px;color:var(--text3)">${r.sei||'—'}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="rel-item" id="item-${id}">
+      <div class="rel-card" onclick="toggleRelDetail('${id}')">
+        <div class="rel-names">
+          <div><span class="rel-from">${p.from}</span> <span class="rel-arrow">→</span> <span class="rel-to">${p.to}</span></div>
+          <div class="rel-count">${tipoStr}</div>
+        </div>
+        <div class="rel-badge"><span class="badge-pill pill-lp">${p.count} contrato${p.count!==1?'s':''}</span></div>
+        <button class="rel-toggle" title="Ver contratos">▼</button>
+      </div>
+      <div class="rel-detail" id="${id}">
+        <table>
+          <thead><tr><th>Registro</th><th>Tipo</th><th>Mercado</th><th>Ano</th><th>Data Assinatura</th><th>Vigência Atual</th><th>Nº SEI</th></tr></thead>
+          <tbody>${detailRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('') || '<div class="tbl-empty">Nenhuma relação encontrada</div>';
+}
+
+window.toggleRelDetail = function(id) {
+  document.getElementById('item-' + id).classList.toggle('open');
+};
+
+// ── Players ────────────────────────────────────────
+let playerMode = 'anual';
+
+document.getElementById('p-player-sel').addEventListener('change', renderPlayerView);
+
+window.setPlayerMode = function(mode) {
+  playerMode = mode;
+  document.getElementById('p-btn-anual').className = 'btn' + (mode === 'anual' ? ' btn-primary' : '');
+  document.getElementById('p-btn-mensal').className = 'btn' + (mode === 'mensal' ? ' btn-primary' : '');
+  renderPlayerView();
+};
+
+function renderPlayerView() {
+  const player = document.getElementById('p-player-sel').value;
+  const empty = document.getElementById('p-empty');
+  const content = document.getElementById('p-content');
+  if (!player) { empty.style.display = ''; content.style.display = 'none'; return; }
+  empty.style.display = 'none';
+  content.style.display = '';
+
+  const cpData = allData.filter(r => r.tipo?.toLowerCase().includes('curto'));
+  const asVend = cpData.filter(r => r.vendedor === player);
+  const asComp = cpData.filter(r => r.comprador === player);
+  const all = [...asVend, ...asComp.filter(r => r.vendedor !== player)];
+  const allContracts = cpData.filter(r => r.vendedor === player || r.comprador === player);
+
+  // KPIs
+  const counterparts = new Set([...asVend.map(r=>r.comprador), ...asComp.map(r=>r.vendedor)].filter(Boolean));
+  const tiposSet = new Set(allContracts.map(r=>r.tipo).filter(Boolean));
+  document.getElementById('p-kpis').innerHTML = `
+    <div class="kpi-card accent"><div class="kpi-label">Total de contratos</div><div class="kpi-val">${allContracts.length}</div></div>
+    <div class="kpi-card green"><div class="kpi-label">Como vendedor</div><div class="kpi-val">${asVend.length}</div></div>
+    <div class="kpi-card pink"><div class="kpi-label">Como comprador</div><div class="kpi-val">${asComp.length}</div></div>
+    <div class="kpi-card amber"><div class="kpi-label">Contrapartes únicas</div><div class="kpi-val">${counterparts.size}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Tipos de contrato</div><div class="kpi-val">${tiposSet.size}</div></div>
+  `;
+
+  // Build time axis
+  let labels, vendSeries, compSeries;
+  if (playerMode === 'anual') {
+    const anos = [...new Set(allContracts.map(r=>r.ano).filter(Boolean))].sort();
+    labels = anos;
+    vendSeries = anos.map(a => asVend.filter(r=>r.ano===a).length);
+    compSeries = anos.map(a => asComp.filter(r=>r.ano===a).length);
+    document.getElementById('p-chart-label').textContent = '— por ano';
+  } else {
+    const getYM = r => {
+      const d = r.assinatura || r.vigencia;
+      if (d && d.length >= 7) return d.slice(0,7);
+      return r.ano ? r.ano + '-01' : null;
+    };
+    const months = [...new Set(allContracts.map(getYM).filter(Boolean))].sort();
+    labels = months;
+    vendSeries = months.map(m => asVend.filter(r=>getYM(r)===m).length);
+    compSeries = months.map(m => asComp.filter(r=>getYM(r)===m).length);
+    document.getElementById('p-chart-label').textContent = '— por mês';
+  }
+
+  if (charts['p-chart']) charts['p-chart'].destroy();
+  const ctx = document.getElementById('p-chart');
+  if (ctx && labels.length) {
+    charts['p-chart'] = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Vendedor', data: vendSeries, backgroundColor: 'rgba(31,201,142,0.75)', borderRadius: 4, borderSkipped: false },
+          { label: 'Comprador', data: compSeries, backgroundColor: 'rgba(79,142,247,0.75)', borderRadius: 4, borderSkipped: false }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#545e72', font: { size: 11 } }, grid: { display: false } },
+          y: { ticks: { color: '#545e72', font: { size: 11 }, stepSize: 1 }, grid: { color: 'rgba(255,255,255,0.05)' } }
+        }
+      }
+    });
+  } else if (ctx) {
+    if (charts['p-chart']) charts['p-chart'].destroy();
+  }
+
+  // Donut — annual distribution for this player
+  const anoTotals = {};
+  allContracts.forEach(r => { if (r.ano) anoTotals[r.ano] = (anoTotals[r.ano] || 0) + 1; });
+  const donutAnos = Object.keys(anoTotals).sort();
+  const donutData = donutAnos.map(a => anoTotals[a]);
+  const donutTotal = donutData.reduce((s, v) => s + v, 0);
+  const donutColors = donutAnos.map((_, i) => MS_COLORS[i % MS_COLORS.length]);
+
+  if (charts['p-donut-chart']) charts['p-donut-chart'].destroy();
+  const dCtx = document.getElementById('p-donut-chart');
+  if (dCtx && donutAnos.length) {
+    charts['p-donut-chart'] = new Chart(dCtx, {
+      type: 'doughnut',
+      data: { labels: donutAnos, datasets: [{ data: donutData, backgroundColor: donutColors, borderColor: '#0f1117', borderWidth: 3, hoverOffset: 6 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '60%',
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: c => ` ${c.label}: ${c.raw} (${((c.raw/donutTotal)*100).toFixed(1)}%)` } }
+        }
+      }
+    });
+  }
+  document.getElementById('p-donut-label').textContent = `— ${allContracts.length} contratos`;
+  document.getElementById('p-donut-legend').innerHTML = donutAnos.map((ano, i) => {
+    const cnt = anoTotals[ano];
+    const pct = donutTotal ? ((cnt / donutTotal) * 100).toFixed(1) : '0.0';
+    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <span style="width:9px;height:9px;border-radius:50%;background:${donutColors[i]};flex-shrink:0;"></span>
+      <span style="color:var(--text2);width:36px;">${ano}</span>
+      <div style="flex:1;background:var(--bg3);border-radius:3px;height:5px;overflow:hidden;">
+        <div style="width:${donutTotal ? Math.round(cnt/donutData[0]*100) : 0}%;height:100%;background:${donutColors[i]};border-radius:3px;"></div>
+      </div>
+      <span style="font-weight:600;color:var(--text);width:20px;text-align:right;">${cnt}</span>
+      <span style="color:var(--text3);width:36px;text-align:right;">${pct}%</span>
+    </div>`;
+  }).join('');
+
+  // Counterpart timelines
+  const vendCounts = {};
+  asVend.forEach(r => { if(r.comprador) vendCounts[r.comprador] = (vendCounts[r.comprador]||0)+1; });
+  const compCounts = {};
+  asComp.forEach(r => { if(r.vendedor) compCounts[r.vendedor] = (compCounts[r.vendedor]||0)+1; });
+  renderTimeline('p-list-vend', vendCounts, '#1fc98e');
+  renderTimeline('p-list-comp', compCounts, '#4f8ef7');
+
+  // Contract table
+  document.getElementById('p-tbl-count').textContent = `(${allContracts.length})`;
+  document.getElementById('p-tbl-body').innerHTML = allContracts.map(r => {
+    const isVend = r.vendedor === player;
+    const papel = isVend
+      ? '<span class="badge-pill pill-cp">Vendedor</span>'
+      : '<span class="badge-pill pill-lp">Comprador</span>';
+    const contraparte = isVend ? (r.comprador||'—') : (r.vendedor||'—');
+    const tp = r.tipo?.toLowerCase();
+    const tcls = tp?.includes('curto') ? 'pill-cp' : tp?.includes('longo') ? 'pill-lp' : 'pill-other';
+    const mc = r.mercado?.toLowerCase();
+    const mcls = mc?.includes('livre') ? 'pill-livre' : mc?.includes('reg') ? 'pill-reg' : 'pill-other';
+    return `<tr>
+      <td>${r.registro||'—'}</td>
+      <td>${papel}</td>
+      <td><strong>${contraparte}</strong></td>
+      <td><span class="badge-pill ${tcls}">${r.tipo||'—'}</span></td>
+      <td><span class="badge-pill ${mcls}">${r.mercado||'—'}</span></td>
+      <td>${r.ano||'—'}</td>
+      <td>${r.assinatura||'—'}</td>
+      <td>${r.vigencia||'—'}</td>
+      <td style="font-family:monospace;font-size:11px;color:var(--text3)">${r.sei||'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Market Share ───────────────────────────────────
+let msRole = 'todos';
+const MS_COLORS = ['#4f8ef7','#1fc98e','#e05a8a','#f0a028','#7c6cf7','#e55252','#26c6da','#ff7043','#66bb6a','#ab47bc','#ffd54f','#78909c'];
+
+document.getElementById('ms-ano').addEventListener('change', renderMarketShare);
+
+window.setMsRole = function(role) {
+  msRole = role;
+  document.getElementById('ms-btn-vend').className = 'btn' + (role === 'vendedor' ? ' btn-primary' : '') + ' ';
+  document.getElementById('ms-btn-comp').className = 'btn' + (role === 'comprador' ? ' btn-primary' : '') + ' ';
+  document.getElementById('ms-btn-todos').className = 'btn' + (role === 'todos' ? ' btn-primary' : '') + ' ';
+  document.getElementById('ms-btn-vend').style.cssText = 'font-size:12px;padding:4px 10px;';
+  document.getElementById('ms-btn-comp').style.cssText = 'font-size:12px;padding:4px 10px;';
+  document.getElementById('ms-btn-todos').style.cssText = 'font-size:12px;padding:4px 10px;';
+  renderMarketShare();
+};
+
+function renderMarketShare() {
+  const cpData = allData.filter(r => r.tipo?.toLowerCase().includes('curto'));
+  const ano = document.getElementById('ms-ano').value;
+  const base = ano ? cpData.filter(r => r.ano === ano) : cpData;
+
+  const counts = {};
+  base.forEach(r => {
+    if (msRole === 'vendedor' || msRole === 'todos') {
+      if (r.vendedor) counts[r.vendedor] = (counts[r.vendedor] || 0) + 1;
+    }
+    if (msRole === 'comprador' || msRole === 'todos') {
+      if (r.comprador) counts[r.comprador] = (counts[r.comprador] || 0) + 1;
+    }
+  });
+
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const total = sorted.reduce((s, [, v]) => s + v, 0);
+  const labels = sorted.map(([k]) => k);
+  const data = sorted.map(([, v]) => v);
+  const colors = labels.map((_, i) => MS_COLORS[i % MS_COLORS.length]);
+
+  if (charts['ms-chart']) charts['ms-chart'].destroy();
+  const ctx = document.getElementById('ms-chart');
+  if (!ctx || !labels.length) return;
+
+  charts['ms-chart'] = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: '#0f1117', borderWidth: 3, hoverOffset: 8 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '62%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.label}: ${ctx.raw} (${((ctx.raw/total)*100).toFixed(1)}%)`
+          }
+        }
+      }
+    }
+  });
+
+  document.getElementById('ms-legend').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;">
+      ${sorted.map(([name, cnt], i) => {
+        const pct = total ? ((cnt / total) * 100).toFixed(1) : '0.0';
+        const barW = total ? Math.round((cnt / sorted[0][1]) * 100) : 0;
+        return `<div style="display:flex;align-items:center;gap:10px;">
+          <span style="width:10px;height:10px;border-radius:50%;background:${MS_COLORS[i % MS_COLORS.length]};flex-shrink:0;"></span>
+          <span style="font-size:12px;color:var(--text2);width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${name}">${name}</span>
+          <div style="flex:1;background:var(--bg3);border-radius:3px;height:6px;overflow:hidden;">
+            <div style="width:${barW}%;height:100%;background:${MS_COLORS[i % MS_COLORS.length]};border-radius:3px;"></div>
+          </div>
+          <span style="font-size:12px;font-weight:600;color:var(--text);width:28px;text-align:right;">${cnt}</span>
+          <span style="font-size:11px;color:var(--text3);width:38px;text-align:right;">${pct}%</span>
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="margin-top:12px;font-size:11px;color:var(--text3);">Total: <strong style="color:var(--text)">${total}</strong> participações${ano ? ` em ${ano}` : ''}</div>
+  `;
+}
+
+// ── Network ────────────────────────────────────────
+function renderNet() {
+  const canvas = document.getElementById('netCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.parentElement.offsetWidth - 32;
+  const H = 480;
+  canvas.width = W; canvas.height = H;
+
+  const vendors = new Set(filteredData.map(r=>r.vendedor).filter(Boolean));
+  const buyers = new Set(filteredData.map(r=>r.comprador).filter(Boolean));
+  const both = new Set([...vendors].filter(x=>buyers.has(x)));
+  const nodeNames = [...new Set([...vendors,...buyers])];
+
+  if (!nodeNames.length) {
+    ctx.fillStyle = '#545e72'; ctx.font = '14px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Nenhum dado para exibir', W/2, H/2); return;
+  }
+
+  // Build edges
+  const edgeMap = {};
+  filteredData.forEach(r => {
+    if (r.vendedor && r.comprador) {
+      const k = r.vendedor+'|'+r.comprador;
+      edgeMap[k] = (edgeMap[k]||0) + 1;
+    }
+  });
+
+  // Physics layout
+  netNodes = nodeNames.map((name, i) => {
+    const angle = (i / nodeNames.length) * Math.PI * 2 - Math.PI/2;
+    const r = Math.min(W, H) * 0.35;
+    return { name, x: W/2 + r*Math.cos(angle), y: H/2 + r*Math.sin(angle), vx:0, vy:0 };
+  });
+
+  netEdges = Object.entries(edgeMap).map(([k,w]) => {
+    const [a,b] = k.split('|');
+    return { a, b, w };
+  });
+
+  const nodeMap = {};
+  netNodes.forEach(n => nodeMap[n.name] = n);
+
+  let frame = 0;
+  if (netAnim) cancelAnimationFrame(netAnim);
+
+  function tick() {
+    // Simple force
+    if (frame < 80) {
+      netNodes.forEach(n => { n.vx *= 0.85; n.vy *= 0.85; });
+      netNodes.forEach((n,i) => {
+        netNodes.forEach((m,j) => {
+          if (i===j) return;
+          const dx = n.x-m.x, dy = n.y-m.y;
+          const d = Math.sqrt(dx*dx+dy*dy)||1;
+          const f = 1200/(d*d);
+          n.vx += dx/d*f; n.vy += dy/d*f;
+        });
+      });
+      netEdges.forEach(e => {
+        const a = nodeMap[e.a], b = nodeMap[e.b];
+        if (!a||!b) return;
+        const dx = b.x-a.x, dy = b.y-a.y;
+        const d = Math.sqrt(dx*dx+dy*dy)||1;
+        const target = 120 + e.w*10;
+        const f = (d-target)*0.01;
+        a.vx += dx/d*f; a.vy += dy/d*f;
+        b.vx -= dx/d*f; b.vy -= dy/d*f;
+      });
+      // Center pull
+      netNodes.forEach(n => {
+        n.vx += (W/2-n.x)*0.003;
+        n.vy += (H/2-n.y)*0.003;
+        n.x += n.vx; n.y += n.vy;
+        n.x = Math.max(40, Math.min(W-40, n.x));
+        n.y = Math.max(30, Math.min(H-30, n.y));
+      });
+      frame++;
+    }
+    draw(ctx, W, H, nodeMap, both, vendors);
+    netAnim = requestAnimationFrame(tick);
+  }
+  tick();
+
+  // Click to filter
+  canvas.onclick = e => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX-rect.left)*(W/rect.width);
+    const my = (e.clientY-rect.top)*(H/rect.height);
+    let hit = null;
+    netNodes.forEach(n => {
+      const dx = n.x-mx, dy = n.y-my;
+      if (Math.sqrt(dx*dx+dy*dy) < 18) hit = n.name;
+    });
+    if (hit) {
+      const sel = document.getElementById('f-player');
+      sel.value = sel.value === hit ? '' : hit;
+      applyFilters();
+    }
+  };
+
+  document.getElementById('net-info').textContent = `${nodeNames.length} players, ${Object.keys(edgeMap).length} relações`;
+}
+
+function draw(ctx, W, H, nodeMap, both, vendors) {
+  ctx.clearRect(0,0,W,H);
+  const fp = document.getElementById('f-player').value;
+
+  // Edges
+  netEdges.forEach(e => {
+    const a = nodeMap[e.a], b = nodeMap[e.b];
+    if (!a||!b) return;
+    const active = !fp || fp===e.a || fp===e.b;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+    ctx.strokeStyle = active ? 'rgba(79,142,247,0.25)' : 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = Math.min(e.w*1.5+1, 6);
+    ctx.stroke();
+    // Arrow
+    if (active) {
+      const angle = Math.atan2(b.y-a.y, b.x-a.x);
+      const mx2 = (a.x+b.x)/2, my2 = (a.y+b.y)/2;
+      ctx.beginPath();
+      ctx.moveTo(mx2, my2);
+      ctx.lineTo(mx2-8*Math.cos(angle-0.4), my2-8*Math.sin(angle-0.4));
+      ctx.lineTo(mx2-8*Math.cos(angle+0.4), my2-8*Math.sin(angle+0.4));
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(79,142,247,0.4)';
+      ctx.fill();
+    }
+  });
+
+  // Nodes
+  netNodes.forEach(n => {
+    const isBoth = both.has(n.name);
+    const isVend = vendors.has(n.name) && !isBoth;
+    const col = isBoth ? '#e05a8a' : isVend ? '#1fc98e' : '#4f8ef7';
+    const active = !fp || fp===n.name;
+    const r = fp===n.name ? 18 : 13;
+    ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI*2);
+    ctx.fillStyle = active ? col : 'rgba(255,255,255,0.08)';
+    ctx.fill();
+    if (fp===n.name) { ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke(); }
+    ctx.fillStyle = active ? '#fff' : '#545e72';
+    ctx.font = `${fp===n.name?12:11}px -apple-system,sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(n.name, n.x, n.y+r+13);
+  });
+}
+
+// ── Export ──────────────────────────────────────────
+document.getElementById('btn-export').addEventListener('click', () => {
+  const headers = ['Registro','Vendedor','Comprador','Tipo','Mercado','Ano','Vigencia','SEI'];
+  const rows = filteredData.map(r => [r.registro,r.vendedor,r.comprador,r.tipo,r.mercado,r.ano,r.vigencia,r.sei]);
+  const csv = [headers, ...rows].map(r => r.join(';')).join('\n');
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `contratos_export_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  showToast('✅ Arquivo exportado');
+});
+
+// ── Toast ──────────────────────────────────────────
+function showToast(msg, err) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.borderColor = err ? 'rgba(229,82,82,.4)' : 'rgba(31,201,142,.3)';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+</script>
+</body>
+</html>
